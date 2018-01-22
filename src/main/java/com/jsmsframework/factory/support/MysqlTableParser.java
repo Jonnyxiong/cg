@@ -1,5 +1,6 @@
 package com.jsmsframework.factory.support;
 
+import com.jsmsframework.exception.EntityDefinitionStoreException;
 import com.jsmsframework.exception.PrimaryKeyException;
 import com.jsmsframework.factory.config.*;
 import com.jsmsframework.factory.context.CodegenContext;
@@ -46,6 +47,7 @@ public class MysqlTableParser extends AbstractTableParser {
                 boolean multiModule = groupDefinition.isMultiModule();
                 String artifactPrefix = artifactDefinition.getPrefix();
                 String tablePrefix = entityDefinition.getPrefix();
+                String primaryKey = entityDefinition.getPrimaryKey();
 
 
                 ResultSet rs = connection.prepareStatement(
@@ -85,8 +87,8 @@ public class MysqlTableParser extends AbstractTableParser {
                 //server文件
                 ServiceFile serviceFile = new ServiceFile();
                 BeanUtils.copyProperties(entityFile, serviceFile);
-                
-                String pkName = extractPKName(tableName);
+
+                String pkName = extractPKName(tableName, primaryKey);
 
 
                 for (int i = 0; i < rsMetaData.getColumnCount(); i++) {
@@ -100,13 +102,13 @@ public class MysqlTableParser extends AbstractTableParser {
                     EntityField entityField = new EntityField();
                     String classCanonicalName = JavaTypeResolver.parseClassCanonicalName(sqlType);
                     entityField.setClassCanonicalName(classCanonicalName);
-                    entityField.setClassSimpleName(classCanonicalName.substring(classCanonicalName.lastIndexOf(".")+1));
+                    entityField.setClassSimpleName(classCanonicalName.substring(classCanonicalName.lastIndexOf(".") + 1));
                     entityField.setComment(comment);
                     entityField.setFieldName(CamelCaseUtils.parseSnakeCase2LowerCase(column));
                     entityField.setColumnSize(columnSize);
                     entityField.setNullable(nullable);
                     entityFile.addField(entityField);
-                    if(pkName.equals(column)){
+                    if (pkName.equals(column)) {
                         entityFile.setPrimarykey(entityField);
                     }
 
@@ -118,23 +120,56 @@ public class MysqlTableParser extends AbstractTableParser {
                     mapperColumn.setProperty(entityField.getFieldName());
                     mapperColumn.setNumerical(JavaTypeResolver.isNumeriacal(jdbcType));
                     mapperFile.addColumn(mapperColumn);
-                    if(pkName.equals(column)){
+                    if (pkName.equals(column)) {
                         mapperFile.setPrimaryColumn(mapperColumn);
                     }
                 }
                 mapperFile.setPrimarykey(entityFile.getPrimarykey());
                 serviceFile.setPrimarykey(entityFile.getPrimarykey());
 
-                FileHolder fileHolder = new FileHolder(entityFile, mapperFile, serviceFile,multiModule,artifactPrefix,defaultPageClass,fileNamePrefix);
+                FileHolder fileHolder = new FileHolder(entityFile, mapperFile, serviceFile, multiModule, artifactPrefix, defaultPageClass, fileNamePrefix);
                 fileHolders.add(fileHolder);
 
             }
 
         } catch (SQLException e) {
-            logger.error("parse table error, ",e);
+            logger.error("parse table error, ", e);
         }
 
         return fileHolders;
+    }
+
+    private String extractPKName(String tableName, String primaryKey) {
+        String pkName = null;
+
+
+        try {
+            DatabaseMetaData dbMetaData = connection.getMetaData();
+            ResultSet pkRSet = dbMetaData.getPrimaryKeys(null, null, tableName);
+            while (pkRSet.next()) {  //如果存在两个主键时，ResultSet时反过来读的，所以会取组合主键中的第一个
+                System.err.println("****** Comment ******");
+                System.err.println("TABLE_CAT : " + pkRSet.getObject(1));
+                System.err.println("TABLE_SCHEM: " + pkRSet.getObject(2));
+                System.err.println("TABLE_NAME : " + pkRSet.getObject(3));
+                pkName = pkRSet.getObject(4).toString();
+                if (StringUtils.isNotBlank(primaryKey) && StringUtils.isNotBlank(pkName) && primaryKey.equals(pkName)) {
+                    break;
+                } else {
+                    pkName = null;
+                }
+                System.err.println("COLUMN_NAME: " + pkName);
+                System.err.println("KEY_SEQ : " + pkRSet.getObject(5));
+                System.err.println("PK_NAME : " + pkRSet.getObject(6));
+                System.err.println("****** ******* ******");
+            }
+        } catch (SQLException e) {
+            logger.error("extract primary key fail!", e);
+            throw new PrimaryKeyException("extract primary key fail!");
+        }
+        if (StringUtils.isNotBlank(primaryKey) && pkName == null) {
+            throw new EntityDefinitionStoreException("table " + tableName + " doesn't has primaryKey=" + primaryKey);
+        }
+        return pkName;
     }
 
     private String extractPKName(String tableName) {
@@ -143,23 +178,23 @@ public class MysqlTableParser extends AbstractTableParser {
 
         try {
             DatabaseMetaData dbMetaData = connection.getMetaData();
-            ResultSet pkRSet  = dbMetaData.getPrimaryKeys(null, null, tableName);
+            ResultSet pkRSet = dbMetaData.getPrimaryKeys(null, null, tableName);
             while (pkRSet.next()) {  //如果存在两个主键时，ResultSet时反过来读的，所以会取组合主键中的第一个
                 System.err.println("****** Comment ******");
                 System.err.println("TABLE_CAT : " + pkRSet.getObject(1));
                 System.err.println("TABLE_SCHEM: " + pkRSet.getObject(2));
                 System.err.println("TABLE_NAME : " + pkRSet.getObject(3));
-                pkName=pkRSet.getObject(4).toString();
+                pkName = pkRSet.getObject(4).toString();
                 System.err.println("COLUMN_NAME: " + pkName);
                 System.err.println("KEY_SEQ : " + pkRSet.getObject(5));
                 System.err.println("PK_NAME : " + pkRSet.getObject(6));
                 System.err.println("****** ******* ******");
             }
         } catch (SQLException e) {
-            logger.error("extract primary key fail!",e);
+            logger.error("extract primary key fail!", e);
             throw new PrimaryKeyException("extract primary key fail!");
         }
-        return  pkName;
+        return pkName;
     }
 
     private String extractComment(String tableName, String column) {
