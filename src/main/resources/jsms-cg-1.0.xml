@@ -11,6 +11,10 @@
 		<entity tableName="t_sms_user" description="用户表" primaryKey="id" prefix="t_sms" overwrite="false"></entity>
 	</artifact>
 
+	<!-- 模块名字  -->
+	<artifact id="audit" description="用户模块" prefix="jsms">
+		<entity tableName="t_sms_user" description="用户表" primaryKey="id" prefix="t_sms" overwrite="false"></entity>
+	</artifact>
 </group>
 
 
